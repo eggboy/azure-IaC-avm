@@ -21,6 +21,24 @@ A fully private AKS environment where the Kubernetes API server is only reachabl
 
 ---
 
+### [`aro-terraform/`](aro-terraform/)
+
+A fully private Azure Red Hat OpenShift (ARO) cluster where both the API server and ingress are set to **Private** visibility — nothing is exposed to the public internet. The cluster uses managed identities with platform workload identity federation (no service principal), and all egress is routed through a NAT Gateway with a static public IP.
+
+**Key Components:**
+
+| Component | Details |
+|---|---|
+| **ARO Private Cluster** | OpenShift 4.16, API server + Ingress set to Private visibility, managed identities with platform workload identity federation for operator components (cloud-controller-manager, disk/file CSI drivers, image-registry, ingress, machine-api) |
+| **Virtual Network** | Dedicated subnets for master nodes, worker nodes, private endpoints, and WireGuard VPN — master/worker subnets include service endpoints for Storage and Container Registry |
+| **NAT Gateway** | Static outbound public IP for cluster egress, attached to master and worker subnets (replaces default outbound access) |
+| **Managed Identities** | Cluster-level user-assigned identity + per-operator platform workload identities with federated credentials and least-privilege network role assignments |
+| **Log Analytics** | Private ingestion/query disabled for full lockdown, with private DNS zones for ODS, OMS, and Monitor endpoints |
+| **Private DNS Zones** | `privatelink.<region>.aroapp.io` for API server resolution, plus Log Analytics private link zones |
+| **WireGuard VPN** | Same pattern as AKS — a WireGuard gateway VM with dnsmasq so developers can resolve and reach all private endpoints from outside the VNet |
+
+---
+
 ### [`azuremachinelearning-terraform/`](azuremachinelearning-terraform/)
 
 A network-isolated Azure Machine Learning workspace where every supporting service — Key Vault, Storage, Container Registry — is locked behind private endpoints. The ML workspace itself uses managed VNet isolation (`AllowInternetOutbound` mode), so compute instances and clusters never sit on a public network.
@@ -43,7 +61,24 @@ See [azuremachinelearning-terraform/README.md](azuremachinelearning-terraform/RE
 
 ### [`microsoftfoundry-terraform/`](microsoftfoundry-terraform/)
 
-Scaffolding for a **Microsoft Foundry** deployment. Currently contains provider configuration (`azurerm ~> 4.0`, `azapi ~> 2.0`) — work in progress.
+A network-isolated **Microsoft Foundry (AI Foundry)** deployment with an AI Services account, Foundry project, and Capability Host for Agents — all locked behind private endpoints with public access disabled. The AI account uses VNet-injected network injection for the agent subnet, and every backing service (Storage, AI Search, Cosmos DB) is reachable only through private endpoints.
+
+**Key Components:**
+
+| Component | Details |
+|---|---|
+| **AI Services Account** | `AIServices` kind (S0 SKU), public network access disabled, system-assigned managed identity, VNet network injection for the agent subnet, model deployments (e.g. gpt-4o-mini) |
+| **AI Foundry Project** | System-assigned identity with least-privilege role assignments for all connected services |
+| **Capability Host** | Agents capability with connections to Cosmos DB (thread storage), Storage (blob), and AI Search (vector store) |
+| **Storage Account** | Standard ZRS/GRS, public access disabled, shared key disabled, private endpoint for blob |
+| **AI Search** | Standard SKU, public access disabled, local auth disabled, system-assigned managed identity, private endpoint |
+| **Cosmos DB** | Session consistency, local auth disabled, private endpoint (SQL API) |
+| **Log Analytics** | PerGB2018 SKU, 30-day retention, public ingestion and query disabled for full network lockdown |
+| **Container Apps Environment** | Internal-only (no public ingress), VNet-injected into the MCP subnet, Consumption workload profile, integrated with Log Analytics |
+| **Virtual Network** | Dedicated subnets for agents, private endpoints, APIM (optional), MCP (Container Apps), and WireGuard VPN |
+| **API Management** | Optional PremiumV2 APIM, VNet-injected (enabled via `enable_apim` variable) |
+| **Private DNS Zones** | Zones for AI Services, OpenAI, Cognitive Services, Blob Storage, AI Search, and Cosmos DB |
+| **WireGuard VPN** | Same pattern as other projects — a WireGuard gateway VM with dnsmasq for developer access to private endpoints |
 
 ## Prerequisites
 
