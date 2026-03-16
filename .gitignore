@@ -220,6 +220,7 @@ $RECYCLE.BIN/
 wg0.conf
 *tfplan*
 .terraform.lock.hcl
+*.key
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,jetbrains+all,macos,windows,linux,terraform
 
