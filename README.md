@@ -84,9 +84,35 @@ A network-isolated **Microsoft Foundry (AI Foundry)** deployment with an AI Serv
 
 - [Terraform](https://www.terraform.io/downloads) >= 1.9
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) (authenticated via `az login`)
+- [WireGuard tools](https://www.wireguard.com/install/) (`wg` command) — for VPN key generation and client config
 - An Azure subscription with sufficient permissions
 
 ## Usage
+
+### 1. Generate WireGuard Keys
+
+Each project deploys a WireGuard VPN gateway. You need a **server** key pair and a **client** key pair before running `terraform apply`.
+
+```bash
+# Generate server key pair
+wg genkey > server.key
+wg pubkey < server.key > server.pub
+
+# Generate client key pair
+wg genkey > client.key
+wg pubkey < client.key > client.pub
+```
+
+### 2. Export Terraform Variables
+
+Pass the keys as environment variables so Terraform can configure the VPN gateway:
+
+```bash
+export TF_VAR_wireguard_server_private_key=$(cat server.key)
+export TF_VAR_wireguard_client_public_key=$(cat client.pub)
+```
+
+### 3. Deploy
 
 ```bash
 cd <project-folder>/
@@ -94,3 +120,15 @@ terraform init
 terraform plan -out=tfplan
 terraform apply tfplan
 ```
+
+### 4. Generate Client VPN Config
+
+After `terraform apply` completes, generate the WireGuard client config using the helper script:
+
+```bash
+./generate-wg0-conf.sh client.key server.key
+```
+
+This reads Terraform outputs (public IP, VNet CIDR) and produces a `wg0.conf` file. Use it with WireGuard client to connect to newly created environment.
+
+Once connected, you can resolve private DNS zones and reach all private endpoints from your local machine.
