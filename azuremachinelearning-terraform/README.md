@@ -67,94 +67,46 @@ This project uses [Azure Verified Modules (AVM)](https://azure.github.io/Azure-V
 
 ### 1. Generate WireGuard Keys
 
-Generate a server and client key pair using the `wg` CLI:
+Each project deploys a WireGuard VPN gateway. You need a **server** key pair and a **client** key pair before running `terraform apply`.
 
 ```bash
-# Server key pair
-wg genkey | tee server_private.key | wg pubkey > server_public.key
+# Generate server key pair
+wg genkey > server.key
+wg pubkey < server.key > server.pub
 
-# Client key pair
-wg genkey | tee client_private.key | wg pubkey > client_public.key
+# Generate client key pair
+wg genkey > client.key
+wg pubkey < client.key > client.pub
 ```
 
-> **Security:** Keep the private key files safe. Do **not** commit them to version control. Add `*.key` to your `.gitignore`.
+### 2. Export Terraform Variables
 
-### 2. Initialize Terraform
+Pass the keys as environment variables so Terraform can configure the VPN gateway:
+
+```bash
+export TF_VAR_wireguard_server_private_key=$(cat server.key)
+export TF_VAR_wireguard_client_public_key=$(cat client.pub)
+```
+
+### 3. Deploy
 
 ```bash
 terraform init
-```
-
-### 3. Export WireGuard Keys as Environment Variables
-
-Pass the sensitive WireGuard keys via `TF_VAR_` environment variables so they are **never written to disk** in `.tfvars` files:
-
-```bash
-export TF_VAR_wireguard_server_private_key="$(cat server_private.key)"
-export TF_VAR_wireguard_client_public_key="$(cat client_public.key)"
-```
-
-> **Tip:** Add these exports to a local `.envrc` (if you use [direnv](https://direnv.net/)) or source them from a secrets manager. Never commit private keys to version control.
-
-### 4. Create `terraform.tfvars`
-
-Provide non-sensitive settings (WireGuard keys are supplied via environment variables above):
-
-```hcl
-location    = "eastasia"
-project     = "aml"
-environment = "dev"
-```
-
-### 5. Plan and Apply
-
-```bash
 terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-### 6. Configure WireGuard Client
+### 4. Generate Client VPN Config
 
-After `terraform apply`, create a `wg0.conf` file on your local machine with the values from your keys and the Terraform outputs:
-
-```ini
-[Interface]
-Address    = 10.100.0.2/24
-PrivateKey = <contents of client_private.key>
-# dnsmasq on the WireGuard server forwards to Azure DNS (168.63.129.16),
-# which resolves privatelink zones to private endpoint IPs.
-DNS        = 10.100.0.1
-
-[Peer]
-PublicKey  = <contents of server_public.key>
-Endpoint   = <wireguard_vm_public_ip>:51820
-AllowedIPs = 10.0.0.0/16, 10.100.0.0/24
-PersistentKeepalive = 25
-```
-
-| Field | Source |
-|-------|--------|
-| `PrivateKey` | `client_private.key` generated in step 1 |
-| `PublicKey` | `server_public.key` generated in step 1 |
-| `Endpoint` | `terraform output wireguard_vm_public_ip` |
-
-Import the config into your WireGuard client:
-
-- **macOS** — Open WireGuard.app → *Import Tunnel(s) from File* → select `wg0.conf`
-- **Windows** — Open WireGuard → *Import tunnel(s) from file* → select `wg0.conf`
-- **Linux** — Copy to `/etc/wireguard/wg0.conf` and run `sudo wg-quick up wg0`
-
-### 7. Verify Connectivity
-
-With the tunnel active, verify DNS resolution to the ML workspace private endpoint:
+After `terraform apply` completes, generate the WireGuard client config using the helper script:
 
 ```bash
-# Resolve the workspace FQDN through the VPN DNS
-dig +short @10.100.0.1 <workspace-guid>.workspace.<region>.api.azureml.ms
-# Expected: a 10.0.3.x private IP address
+./generate-wg0-conf.sh client.key server.key
 ```
 
-> **Note:** ICMP (ping) is typically blocked in Azure — use DNS lookups or `curl` to verify connectivity rather than ping.
+This reads Terraform outputs (public IP, VNet CIDR) and produces a `wg0.conf` file. Use it with WireGuard client to connect to newly created environment.
+
+Once connected, you can resolve private DNS zones and reach all private endpoints from your local machine.
 
 ## Variables
 

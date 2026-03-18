@@ -52,6 +52,28 @@ module "container_apps_env" {
 # AI Services Account (Microsoft.CognitiveServices/accounts)
 # ==============================================================================
 
+# Guard the agent subnet against premature deletion.
+# On destroy, Terraform reverses the dependency chain:
+#   ai_account destroyed → polling provisioner waits → vnet can be destroyed
+# The networkInjections feature creates a managed Container Apps Environment
+# (legionservicelink) in a Microsoft-managed subscription (hobov3_*).
+# Its async cleanup can take 10+ minutes — a fixed sleep is unreliable,
+# so we poll the subnet until the service association link is gone.
+resource "terraform_data" "wait_for_network_injection_cleanup" {
+  depends_on = [module.vnet]
+
+  input = {
+    resource_group_name = azurerm_resource_group.this.name
+    vnet_name           = module.vnet.resource.name
+    subnet_name         = "snet-agent-${local.name_prefix}-${var.instance}"
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "${path.module}/wait-for-subnet-cleanup.sh '${self.input.resource_group_name}' '${self.input.vnet_name}' '${self.input.subnet_name}' 30 900"
+  }
+}
+
 resource "azapi_resource" "ai_account" {
   type      = "Microsoft.CognitiveServices/accounts@2025-04-01-preview"
   name      = local.account_name
@@ -94,6 +116,8 @@ resource "azapi_resource" "ai_account" {
     "properties.endpoint",
     "identity.principalId"
   ]
+
+  depends_on = [terraform_data.wait_for_network_injection_cleanup]
 }
 
 # ==============================================================================
