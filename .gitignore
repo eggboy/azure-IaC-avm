@@ -219,7 +219,10 @@ $RECYCLE.BIN/
 
 wg0.conf
 *tfplan*
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally tracked — HashiCorp recommends committing
+# the dependency lock file so every team member and CI run resolves the same
+# provider versions.
+# Ref: https://developer.hashicorp.com/terraform/language/files/dependency-lock
 *.key
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,jetbrains+all,macos,windows,linux,terraform

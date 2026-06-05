@@ -48,7 +48,7 @@ variable "environment" {
 variable "location" {
   description = "The Azure region where resources will be deployed"
   type        = string
-  default     = "koreacentral"
+  default     = "indonesiacentral"
 }
 
 variable "pull_secret" {

@@ -2,15 +2,19 @@
 # Role Assignments — AI Project System-Assigned Identity
 # ==============================================================================
 
-locals {
-  # Extract the project principal ID from azapi response
-  project_principal_id = azapi_resource.ai_project.output.identity.principalId
+# ----- Foundry User Role -----
 
-  # Extract project workspace GUID from internalId
-  # internalId format: /subscriptions/.../workspaces/<guid>  — we need the last segment
-  project_workspace_id = element(split("/", azapi_resource.ai_project.output.properties.internalId),
-    length(split("/", azapi_resource.ai_project.output.properties.internalId)) - 1
-  )
+# Foundry User — grants the project managed identity data-plane access to the
+# Foundry resource. Without it, agents and other Foundry features will fail.
+# GUID is held in local.role_definition_ids.foundry_user to avoid breakage
+# during the Foundry role rename rollout.
+# See: https://learn.microsoft.com/en-us/azure/foundry/concepts/rbac-foundry
+resource "azurerm_role_assignment" "foundry_user" {
+  scope                            = azapi_resource.ai_account.id
+  role_definition_id               = "${local.role_definition_id_prefix}/${local.role_definition_ids.foundry_user}"
+  principal_id                     = local.project_principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
 }
 
 # ----- AI Search Roles -----
@@ -90,4 +94,52 @@ resource "azurerm_role_assignment" "storage_blob_owner" {
   condition                        = "((!(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/tags/read'})  AND  !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/filter/action'}) AND  !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/tags/write'}) ) OR (@Resource[Microsoft.Storage/storageAccounts/blobServices/containers:name] StringStartsWithIgnoreCase '${local.project_workspace_id}' AND @Resource[Microsoft.Storage/storageAccounts/blobServices/containers:name] StringLikeIgnoreCase '*-azureml-agent'))"
 
   depends_on = [azapi_resource.capability_host]
+}
+
+# ----- Container Registry Roles (for Hosted Agents) -----
+
+# AcrPull — allows the project managed identity to pull container images
+# from ACR for hosted agent deployments.
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                            = module.acr.resource_id
+  role_definition_name             = "AcrPull"
+  principal_id                     = local.project_principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+
+# ----- Key Vault Roles -----
+
+# Key Vault Secrets Officer granted to the Terraform runner. Lets the apply
+# write/manage secrets in the KV later (e.g., bootstrap third-party API
+# tokens, custom connection credentials). Currently unused by Phase D — the
+# AppInsights conn string is owned by Foundry in BYO KV — but kept so future
+# ad-hoc secrets don't require a separate apply. GUID is held in
+# local.role_definition_ids.key_vault_secrets_officer per AVM convention.
+resource "azurerm_role_assignment" "kv_secrets_officer_caller" {
+  scope              = module.keyvault.resource_id
+  role_definition_id = "${local.role_definition_id_prefix}/${local.role_definition_ids.key_vault_secrets_officer}"
+  principal_id       = data.azurerm_client_config.current.object_id
+}
+
+# Key Vault Secrets Officer granted to the Foundry account's system-assigned
+# managed identity. Required so Foundry's runtime can create, read, and
+# rotate the secrets it stores in BYO KV for non-Entra connections (e.g.,
+# the AppInsights ApiKey credential). Matches MS's set-up-key-vault-connection
+# Bicep sample.
+# Ref: https://learn.microsoft.com/en-us/azure/foundry/how-to/set-up-key-vault-connection
+resource "azurerm_role_assignment" "kv_secrets_officer_foundry" {
+  scope                            = module.keyvault.resource_id
+  role_definition_id               = "${local.role_definition_id_prefix}/${local.role_definition_ids.key_vault_secrets_officer}"
+  principal_id                     = azapi_resource.ai_account.output.identity.principalId
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+
+# Wait for the Foundry SAMI Secrets Officer role assignment to propagate
+# before the conn_keyvault create call validates Foundry can access the KV.
+# Mirrors the existing wait_for_ai_account pattern in private_endpoints.tf.
+resource "time_sleep" "wait_for_kv_rbac" {
+  depends_on      = [azurerm_role_assignment.kv_secrets_officer_foundry]
+  create_duration = "60s"
 }

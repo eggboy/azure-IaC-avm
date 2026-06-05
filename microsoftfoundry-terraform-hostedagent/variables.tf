@@ -2,6 +2,28 @@
 # Required Variables (alphabetical)
 # ==============================================================================
 
+variable "ampls_ingestion_access_mode" {
+  type        = string
+  default     = "PrivateOnly"
+  description = "AMPLS ingestion access mode. 'Open' (Phase E-1/E-2): telemetry can ingest over public or AMPLS PE. 'PrivateOnly' (Phase E-3): VNet workloads can write ONLY to AMPLS-scoped Monitor resources. Flipping to PrivateOnly also flips Application Insights internet_ingestion_enabled=false."
+
+  validation {
+    condition     = contains(["Open", "PrivateOnly"], var.ampls_ingestion_access_mode)
+    error_message = "ampls_ingestion_access_mode must be either 'Open' or 'PrivateOnly'."
+  }
+}
+
+variable "ampls_query_access_mode" {
+  type        = string
+  default     = "PrivateOnly"
+  description = "AMPLS query access mode. 'Open' (Phase E-1): portal Logs/Trace tab works from public or AMPLS PE. 'PrivateOnly' (Phase E-2): query path closed on the public endpoint; only AMPLS PE callers (e.g., WireGuard client) can read. Flipping to PrivateOnly also flips Application Insights internet_query_enabled=false."
+
+  validation {
+    condition     = contains(["Open", "PrivateOnly"], var.ampls_query_access_mode)
+    error_message = "ampls_query_access_mode must be either 'Open' or 'PrivateOnly'."
+  }
+}
+
 variable "apim_publisher_email" {
   type        = string
   default     = ""
@@ -12,6 +34,12 @@ variable "apim_publisher_name" {
   type        = string
   default     = ""
   description = "The name of the API Management publisher. Required when enable_apim is true."
+}
+
+variable "app_insights_daily_cap_gb" {
+  type        = number
+  default     = 1
+  description = "Daily ingestion cap for Application Insights, in GB. Keeps telemetry cost bounded during the initial rollout; raise once observed volume justifies it."
 }
 
 variable "wireguard_client_public_key" {
@@ -78,13 +106,19 @@ variable "instance" {
 
 variable "location" {
   type        = string
-  default     = "eastus2"
+  default     = "swedencentral"
   description = "The Azure region where the resources will be deployed."
 
   validation {
     condition     = can(regex("^[a-z]+[a-z0-9]*$", var.location))
     error_message = "Location must be a valid Azure region name (lowercase, no spaces)."
   }
+}
+
+variable "mcp_image_tag" {
+  type        = string
+  default     = "latest"
+  description = "Container image tag for the private MCP server, pulled from the project ACR as <acr-login-server>/multi-auth-mcp:<tag>. The image is built and pushed from ./mcp-server/ via build_and_push.sh. Defaults to 'latest' to match the current live deployment; immutable tags (e.g. 'v1') are recommended for production so that Container Apps actually rolls revisions on push."
 }
 
 variable "model_capacity" {
@@ -117,21 +151,15 @@ variable "model_version" {
   description = "The version of the model to deploy."
 }
 
-variable "workload" {
-  type        = string
-  default     = "privateagent"
-  description = "The workload name used in resource naming per Azure CAF convention."
-}
-
 variable "project_description" {
   type        = string
-  default     = "A project for the AI Foundry account with network secured deployed Agent"
+  default     = "A project for the AI Foundry account with hosted agent support"
   description = "Description for the AI Foundry project."
 }
 
 variable "project_display_name" {
   type        = string
-  default     = "network secured agent project"
+  default     = "hosted agent project"
   description = "The display name of the project."
 }
 
@@ -183,4 +211,10 @@ variable "vnet_address_space" {
   default     = ["10.0.0.0/16"]
   nullable    = false
   description = "The address space for the virtual network."
+}
+
+variable "workload" {
+  type        = string
+  default     = "privateagent"
+  description = "The workload name used in resource naming per Azure CAF convention."
 }

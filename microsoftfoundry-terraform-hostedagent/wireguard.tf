@@ -34,8 +34,8 @@ module "wireguard_vm" {
         ipconfig1 = {
           name                          = "ipconfig1"
           private_ip_subnet_resource_id = module.vnet.subnets["snet-wireguard"].resource_id
-          create_public_ip_address      = true
-          public_ip_address_name        = "pip-wireguard-${local.name_prefix}-${var.instance}"
+          create_public_ip_address      = false
+          public_ip_address_resource_id = azurerm_public_ip.wireguard.id
         }
       }
     }
@@ -56,9 +56,34 @@ module "wireguard_vm" {
   }
 }
 
-# Resolve the public IP so it can be surfaced as an output
+# Declared externally (instead of letting the AVM VM module create it) so we
+# can attach lifecycle.ignore_changes = [ip_tags]. Azure auto-stamps the
+# FirstPartyUsage="/Unprivileged" tag on first-party PIPs (e.g., WireGuard
+# VMs), and the AVM PIP resource neither exposes `ip_tags` nor ignores it —
+# so every plan would otherwise mark the PIP for REPLACEMENT, which would
+# change the public IP and break wg0.conf.
+resource "azurerm_public_ip" "wireguard" {
+  name                    = "pip-wireguard-${local.name_prefix}-${var.instance}"
+  resource_group_name     = azurerm_resource_group.this.name
+  location                = azurerm_resource_group.this.location
+  allocation_method       = "Static"
+  sku                     = "Standard"
+  sku_tier                = "Regional"
+  ip_version              = "IPv4"
+  ddos_protection_mode    = "VirtualNetworkInherited"
+  idle_timeout_in_minutes = 30
+  zones                   = ["1", "2", "3"]
+  tags                    = local.default_tags
+
+  lifecycle {
+    ignore_changes = [ip_tags]
+  }
+}
+
+# Resolve the public IP so it can be surfaced as an output.
+# No depends_on needed: the PIP has allocation_method=Static, so its IP is
+# known at create time — the VM attachment doesn't change it.
 data "azurerm_public_ip" "wireguard" {
-  name                = "pip-wireguard-${local.name_prefix}-${var.instance}"
+  name                = azurerm_public_ip.wireguard.name
   resource_group_name = azurerm_resource_group.this.name
-  depends_on          = [module.wireguard_vm]
 }

@@ -59,26 +59,53 @@ See [azuremachinelearning-terraform/README.md](azuremachinelearning-terraform/RE
 
 ---
 
-### [`microsoftfoundry-terraform/`](microsoftfoundry-terraform/)
+### [`pytorchlab-terraform/`](pytorchlab-terraform/)
 
-A network-isolated **Microsoft Foundry (AI Foundry)** deployment with an AI Services account, Foundry project, and Capability Host for Agents — all locked behind private endpoints with public access disabled. The AI account uses VNet-injected network injection for the agent subnet, and every backing service (Storage, AI Search, Cosmos DB) is reachable only through private endpoints.
+A simple GPU VM for PyTorch development and Jupyter Notebook — no complex networking, just a VNet + NSG + public IP. Designed for remote ML experimentation from VS Code.
 
 **Key Components:**
 
 | Component | Details |
 |---|---|
-| **AI Services Account** | `AIServices` kind (S0 SKU), public network access disabled, system-assigned managed identity, VNet network injection for the agent subnet, model deployments (e.g. gpt-4o-mini) |
-| **AI Foundry Project** | System-assigned identity with least-privilege role assignments for all connected services |
-| **Capability Host** | Agents capability with connections to Cosmos DB (thread storage), Storage (blob), and AI Search (vector store) |
+| **GPU VM** | `Standard_NC4as_T4_v3` — NVIDIA T4 (16 GB VRAM), Ubuntu 24.04 LTS, SSH key auth, system-assigned managed identity |
+| **Software** | CUDA drivers (Azure VM extension), Miniconda, PyTorch (CUDA 12.4), JupyterLab — all installed via cloud-init |
+| **Temp Disk** | 176 GB local NVMe SSD configured for fast PyTorch I/O (`TORCH_HOME`, `TMPDIR`, data/checkpoints symlinks) |
+| **Networking** | Single VNet + subnet, NSG restricts SSH (port 22) to a configurable source IP |
+| **Access** | VS Code Remote-SSH + Jupyter extension — no ports exposed beyond SSH |
+
+See [pytorchlab-terraform/README.md](pytorchlab-terraform/README.md) for full details.
+
+---
+
+### [`microsoftfoundry-terraform-hostedagent/`](microsoftfoundry-terraform-hostedagent/)
+
+A network-isolated **Microsoft Foundry (AI Foundry)** deployment ready to run **hosted agents** — AI Services account, Foundry project, account- + project-level Capability Hosts, container registry, Key Vault (Bring-Your-Own), and Azure Monitor Private Link Scope — all locked behind private endpoints with public access disabled and local auth turned off across every backing service. The AI account uses VNet-injected agent networking, and a private Container Apps Environment is wired into the MCP subnet for custom tool servers. Default region: `swedencentral`.
+
+**Key Components:**
+
+| Component | Details |
+|---|---|
+| **AI Services Account** | `AIServices` kind (S0 SKU), public network access disabled, local auth disabled, system-assigned managed identity, VNet network injection for the agent subnet, model deployment (default: `gpt-4o-mini`) |
+| **AI Foundry Project** | System-assigned identity with least-privilege role assignments for all connected services (Foundry User role assigned by GUID to survive the Foundry role-rename rollout) |
+| **Capability Hosts** | Project-level Agents capability (Cosmos DB threads / Storage blob / AI Search vector store) + an account-level capability host auto-provisioned by `networkInjections.scenario = "agent"` for hosted agents |
+| **Azure Container Registry** | Premium SKU, public access disabled, admin disabled, private endpoint — hosts hosted-agent container images |
+| **Key Vault (BYO)** | Standard SKU, purge protection on, public access disabled, private endpoint — wired as the first Foundry connection so all non-Entra connection secrets are stored in **your** vault instead of Microsoft-managed KV |
 | **Storage Account** | Standard ZRS/GRS, public access disabled, shared key disabled, private endpoint for blob |
 | **AI Search** | Standard SKU, public access disabled, local auth disabled, system-assigned managed identity, private endpoint |
-| **Cosmos DB** | Session consistency, local auth disabled, private endpoint (SQL API) |
-| **Log Analytics** | PerGB2018 SKU, 30-day retention, public ingestion and query disabled for full network lockdown |
+| **Cosmos DB** | Session consistency, local auth disabled, private endpoint (SQL API) — includes an `azapi_update_resource` workaround for AVM v0.10.0 silently re-enabling local auth |
+| **Log Analytics + Application Insights** | PerGB2018 / 30-day retention; both attached to an **Azure Monitor Private Link Scope (AMPLS)** with phase-controlled `ingestion_access_mode` / `query_access_mode` (default `PrivateOnly`) |
 | **Container Apps Environment** | Internal-only (no public ingress), VNet-injected into the MCP subnet, Consumption workload profile, integrated with Log Analytics |
-| **Virtual Network** | Dedicated subnets for agents, private endpoints, APIM (optional), MCP (Container Apps), and WireGuard VPN |
+| **Virtual Network** | Dedicated subnets for agents (delegated to `Microsoft.App/environments`), private endpoints, APIM (optional), MCP (Container Apps), and WireGuard VPN |
 | **API Management** | Optional PremiumV2 APIM, VNet-injected (enabled via `enable_apim` variable) |
-| **Private DNS Zones** | Zones for AI Services, OpenAI, Cognitive Services, Blob Storage, AI Search, and Cosmos DB |
+| **Private DNS Zones** | Zones for AI Services, OpenAI, Cognitive Services, AI Search, Blob Storage, Cosmos DB, ACR, Key Vault, and the five AMPLS zones (`monitor`, `oms`, `ods`, `agentsvc`, blob — reused) |
 | **WireGuard VPN** | Same pattern as other projects — a WireGuard gateway VM with dnsmasq for developer access to private endpoints |
+
+**Companion test harnesses and code projects:**
+
+- [`mcp-server/`](microsoftfoundry-terraform-hostedagent/mcp-server/) — source for the multi-auth MCP container that runs in the private Container Apps Environment. Includes a pinned `Dockerfile`, a `build_and_push.sh` script targeting the private ACR, and the FastMCP Python server (`add`, `time` tools + an OAuth-protected resource metadata endpoint). The container app itself is provisioned by `mcp.tf` via the AVM container-app module.
+- [`hosted-agent-test/`](microsoftfoundry-terraform-hostedagent/hosted-agent-test/) — end-to-end workflow for building a hosted-agent container image, pushing to the private ACR, registering a hosted agent version that consumes the private MCP server, and invoking it via the Responses API with App Insights tracing.
+- [`ampls-test/`](microsoftfoundry-terraform-hostedagent/ampls-test/) — REST-level probe that proves the App Insights private ingestion path end-to-end (validates AMPLS Phase E-1 → E-2 → E-3 rollout from inside and outside the VNet).
+- [`private-mcp-test/`](microsoftfoundry-terraform-hostedagent/private-mcp-test/) — SDK tests for agents calling AI Search and private MCP servers over the Data Proxy.
 
 ## Prerequisites
 

@@ -1,0 +1,7 @@
+# Refreshed-preview hosted-agent packages. Pinning to narrow sub-packages avoids
+# the agent-framework[all] meta-package which pulls Linux-only deps.
+agent-framework-foundry
+agent-framework-foundry-hosting
+azure-identity>=1.19
+# MCP client transport (Streamable HTTP) — required by MCPStreamableHTTPTool.
+mcp>=1.24.0

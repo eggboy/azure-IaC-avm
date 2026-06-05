@@ -330,3 +330,111 @@ module "dns_cosmos" {
     }
   }
 }
+
+module "dns_acr" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = "privatelink.azurecr.io"
+  enable_telemetry = var.enable_telemetry
+  parent_id        = azurerm_resource_group.this.id
+  tags             = local.default_tags
+
+  virtual_network_links = {
+    vnet = {
+      name               = "link-acr"
+      virtual_network_id = module.vnet.resource_id
+    }
+  }
+}
+
+module "dns_keyvault" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = "privatelink.vaultcore.azure.net"
+  enable_telemetry = var.enable_telemetry
+  parent_id        = azurerm_resource_group.this.id
+  tags             = local.default_tags
+
+  virtual_network_links = {
+    vnet = {
+      name               = "link-keyvault"
+      virtual_network_id = module.vnet.resource_id
+    }
+  }
+}
+
+# ----- Azure Monitor Private Link (AMPLS) DNS zones -----
+# Five zones are required by AMPLS so the PE NIC can resolve every Monitor
+# endpoint privately. The fifth (privatelink.blob.core.windows.net) is reused
+# from module.dns_blob above — AMPLS needs it for solution payload downloads.
+# Ref: https://learn.microsoft.com/en-us/azure/azure-monitor/logs/private-link-configure#connect-to-a-private-endpoint
+
+module "dns_monitor" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = "privatelink.monitor.azure.com"
+  enable_telemetry = var.enable_telemetry
+  parent_id        = azurerm_resource_group.this.id
+  tags             = local.default_tags
+
+  virtual_network_links = {
+    vnet = {
+      name               = "link-monitor"
+      virtual_network_id = module.vnet.resource_id
+    }
+  }
+}
+
+module "dns_oms" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = "privatelink.oms.opinsights.azure.com"
+  enable_telemetry = var.enable_telemetry
+  parent_id        = azurerm_resource_group.this.id
+  tags             = local.default_tags
+
+  virtual_network_links = {
+    vnet = {
+      name               = "link-oms"
+      virtual_network_id = module.vnet.resource_id
+    }
+  }
+}
+
+module "dns_ods" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = "privatelink.ods.opinsights.azure.com"
+  enable_telemetry = var.enable_telemetry
+  parent_id        = azurerm_resource_group.this.id
+  tags             = local.default_tags
+
+  virtual_network_links = {
+    vnet = {
+      name               = "link-ods"
+      virtual_network_id = module.vnet.resource_id
+    }
+  }
+}
+
+module "dns_agentsvc" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = "privatelink.agentsvc.azure-automation.net"
+  enable_telemetry = var.enable_telemetry
+  parent_id        = azurerm_resource_group.this.id
+  tags             = local.default_tags
+
+  virtual_network_links = {
+    vnet = {
+      name               = "link-agentsvc"
+      virtual_network_id = module.vnet.resource_id
+    }
+  }
+}
