@@ -82,7 +82,7 @@ print('10.0.0.0/16')
 # WireGuard tunnel subnet (must match cloud-init config)
 WG_TUNNEL_SUBNET="10.100.0.0/24"
 WG_CLIENT_ADDRESS="10.100.0.2/24"
-WG_DNS="10.100.0.1"
+WG_DNS="10.100.0.1, vault.azure.net, monitor.azure.com, blob.core.windows.net, cognitiveservices.azure.com, search.windows.net, documents.azure.com, openai.azure.com, services.ai.azure.com"
 WG_PORT="51820"
 
 # ── Generate wg0.conf ───────────────────────────────────────────────────────
@@ -90,11 +90,10 @@ cat > "$OUTPUT_FILE" <<EOF
 [Interface]
 Address    = ${WG_CLIENT_ADDRESS}
 PrivateKey = ${CLIENT_PRIVATE_KEY}
-# Route DNS through the VPN via dnsmasq running on the WireGuard server.
-# dnsmasq (10.100.0.1) forwards to Azure DNS (168.63.129.16) locally,
-# which resolves privatelink zones to private endpoint IPs.
-# NOTE: 168.63.129.16 is host-local in Azure and cannot be reached
-# directly through the tunnel — a DNS forwarder on the VM is required.
+# Split-DNS: only Azure private-link domains resolve via the tunnel.
+# dnsmasq (10.100.0.1) forwards to Azure DNS (168.63.129.16) locally.
+# Match-domains after the IP tell macOS to use this DNS only for those suffixes;
+# all other queries use the default system resolver (no internet disruption).
 DNS        = ${WG_DNS}
 
 [Peer]

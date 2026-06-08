@@ -47,10 +47,19 @@ write_files:
   - path: /etc/dnsmasq.d/wireguard.conf
     content: |
       listen-address=10.100.0.1
-      bind-interfaces
+      bind-dynamic
       server=168.63.129.16
       no-resolv
       cache-size=1000
+
+  # Ensure dnsmasq starts after WireGuard so 10.100.0.1 is available.
+  # Without this, dnsmasq fails on reboot with "Cannot assign requested address"
+  # because systemd may start it before wg-quick@wg0 brings up the interface.
+  - path: /etc/systemd/system/dnsmasq.service.d/after-wireguard.conf
+    content: |
+      [Unit]
+      After=wg-quick@wg0.service
+      Requires=wg-quick@wg0.service
 
 runcmd:
   # Apply sysctl settings immediately
@@ -60,6 +69,7 @@ runcmd:
   - systemctl start wg-quick@wg0
   # Persist iptables rules across reboots
   - netfilter-persistent save
-  # Enable and start dnsmasq (after WireGuard so 10.100.0.1 is available)
+  # Reload systemd to pick up the dnsmasq drop-in, then enable and start
+  - systemctl daemon-reload
   - systemctl enable dnsmasq
   - systemctl restart dnsmasq
