@@ -225,5 +225,13 @@ wg0.conf
 # Ref: https://developer.hashicorp.com/terraform/language/files/dependency-lock
 *.key
 
+### Python / uv ###
+# uv-managed virtual environment (recreated from uv.lock; never committed).
+# pyproject.toml, uv.lock and .python-version ARE tracked for reproducible builds.
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,jetbrains+all,macos,windows,linux,terraform
 

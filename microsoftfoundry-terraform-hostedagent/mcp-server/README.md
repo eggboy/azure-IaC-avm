@@ -19,10 +19,10 @@ calls the **`/noauth/mcp`** endpoint over the project's private VNet.
 This source is the unmodified contents of `/app/` extracted from
 `docker.io/eggboy/multi-auth-mcp@sha256:b672376c25c163bdbc629f0dccccbf1e9ae160452743e8a5cc1abe222833c951`
 (the image originally pushed by the project owner on 2026-03-16). Identical
-SHA-1 verified for all four Python source files. `requirements.txt` is the
-`pip freeze` output of the running container, pinning the transitive closure
-the image was tested against. The Dockerfile is reconstructed from
-`docker history` of the same image.
+SHA-1 verified for all four Python source files. Dependencies are now managed
+with [uv](https://docs.astral.sh/uv/): `pyproject.toml` declares the direct
+requirements and `uv.lock` pins the full transitive closure for reproducible
+builds. The Dockerfile is reconstructed from `docker history` of the same image.
 
 ## Architecture (within this project)
 
@@ -63,8 +63,10 @@ the image was tested against. The Dockerfile is reconstructed from
 
 ```
 mcp-server/
-├── Dockerfile               # python:3.11.14-slim-trixie, reconstructed from image history
-├── requirements.txt         # pinned (pip freeze of the running image)
+├── Dockerfile               # python:3.11.14-slim-trixie + uv sync (reconstructed from image history)
+├── pyproject.toml           # direct dependencies (uv project; package = false)
+├── uv.lock                  # full transitive closure, pinned and reproducible
+├── .python-version          # pins CPython 3.11 for uv
 ├── build_and_push.sh        # docker buildx --platform linux/amd64 --push to ACR
 ├── .dockerignore
 ├── .env.example             # documents every env var src/config.py reads
@@ -109,12 +111,14 @@ Two things are worth being explicit about:
 ## Local development
 
 ```bash
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+uv sync                # creates .venv from uv.lock
 cp .env.example .env   # then edit
-uvicorn src.server_multi_auth:app --host 0.0.0.0 --port 8080 --reload
+uv run uvicorn src.server_multi_auth:app --host 0.0.0.0 --port 8080 --reload
 curl http://localhost:8080/healthz
 ```
+
+To add or bump a dependency, edit `pyproject.toml` (or `uv add <pkg>`) and run
+`uv lock` to refresh `uv.lock`, then commit both files.
 
 ## Build and push to ACR
 
