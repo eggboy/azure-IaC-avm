@@ -21,3 +21,27 @@ module "apim" {
   virtual_network_subnet_id     = module.vnet.subnets["snet-apim"].resource_id
   tags                          = local.default_tags
 }
+
+# Purge the soft-deleted APIM instance on destroy. APIM soft-deletes by default;
+# the soft-deleted record keeps the service name reserved, so a redeploy with the
+# same name fails until it's purged. Mirrors purge_ai_account in foundry.tf.
+resource "terraform_data" "purge_apim" {
+  count = var.enable_apim ? 1 : 0
+
+  input = {
+    apim_name = local.apim_name
+    location  = azurerm_resource_group.this.location
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      echo "Purging soft-deleted API Management '${self.input.apim_name}' in '${self.input.location}'..."
+      az apim deletedservice purge --service-name '${self.input.apim_name}' --location '${self.input.location}' \
+        2>&1 || echo "Purge returned non-zero (APIM may already be purged or not yet soft-deleted). Continuing."
+      echo "APIM purge command completed."
+    EOT
+  }
+
+  depends_on = [module.apim]
+}

@@ -58,6 +58,25 @@ resource "terraform_data" "wait_for_network_injection_cleanup" {
   }
 }
 
+# The MCP subnet is also delegated to Microsoft.App/environments (private MCP
+# Container Apps Environment), so it gets its own service association link that
+# releases asynchronously after the CAE is torn down. Poll it too, otherwise a
+# fast VNet/subnet teardown can still hit SubnetIsInUseByAnotherResource.
+resource "terraform_data" "wait_for_mcp_subnet_cleanup" {
+  depends_on = [module.vnet]
+
+  input = {
+    resource_group_name = azurerm_resource_group.this.name
+    vnet_name           = module.vnet.resource.name
+    subnet_name         = "snet-mcp-${local.name_prefix}-${var.instance}"
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "${path.module}/wait-for-subnet-cleanup.sh '${self.input.resource_group_name}' '${self.input.vnet_name}' '${self.input.subnet_name}' 30 900"
+  }
+}
+
 # ==============================================================================
 # AI Services Account (Microsoft.CognitiveServices/accounts)
 # ==============================================================================

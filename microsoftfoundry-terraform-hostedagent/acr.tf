@@ -6,11 +6,15 @@ module "acr" {
   source  = "Azure/avm-res-containerregistry-registry/azurerm"
   version = "0.5.1"
 
-  name                          = local.acr_name
-  resource_group_name           = azurerm_resource_group.this.name
-  location                      = azurerm_resource_group.this.location
-  sku                           = "Premium"
-  public_network_access_enabled = false
+  name                = local.acr_name
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  sku                 = "Premium"
+  # Hosted Agents (preview) pull images over ACR's PUBLIC endpoint; private-only
+  # ACR fails the pull with ImageError. Public access stays enabled while RBAC
+  # (AcrPull MI) + admin-disabled keep it locked down.
+  # Ref: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent
+  public_network_access_enabled = true
   admin_enabled                 = false
   enable_telemetry              = var.enable_telemetry
   tags                          = local.default_tags
